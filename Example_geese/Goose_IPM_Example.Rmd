@@ -1,0 +1,254 @@
+---
+title: "Barnacle goose IPM"
+author: "Kate Layton-Matthews"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+vignette: |
+  %\VignetteIndexEntry{Simple IPM Example} %\VignetteEngine{knitr::rmarkdown} %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Integral Projection Models for svalbard barnacle geese
+
+```{r libraries, results='hide', warning=FALSE, message=FALSE}
+# This chunk will be removed once the package is completed - in the meantime it loads the required libraries for the analysis and imports the relevant source files from the project GitHub pages
+library(nimble)
+library(parallel)
+library(coda)
+library(DHARMa)
+library(ggplot2)
+
+source("https://raw.githubusercontent.com/joechip90/PaGAn/master/R/mcmcInternals.R")
+source("https://raw.githubusercontent.com/joechip90/PaGAn/master/R/glmNIMBLE.R")
+source("https://raw.githubusercontent.com/joechip90/PaGAn/master/R/ipmNIMBLE.R")
+```
+
+## Goose dataset
+Reproductive and survival data from the breeding grounds from 1991-2017.
+
+```{}
+# Data loaded seperately: shown here
+knitr::kable(head(exData))
+
+str(exData)
+za0_range <- round(range(exData$mass[exData$a==0],na.rm=T))
+za1_range <- round(range(exData$mass[exData$a==1],na.rm=T))
+
+```
+
+## Vital Rate Regressions
+
+Run vital rate regressions. 
+Survival.
+```{r survSpec}
+# Define the model and the error family
+surv.modelFormula <- cbind(surv, 1 - surv) ~ mass * a
+surv.errorFamily <- binomial(link = "logit")
+
+# Sub-set the data frame so only the columns with relevant data are included
+surv.inputData <- exData[!is.na(exData$surv) & !is.na(exData$mass), ]
+```
+
+Growth model. Gaussian regression body mass at t+1 as the response variable and mass at t + age class (a) as predictors.
+```{r growthSpec}
+# Define the model (error family not needed because it is assumed to be Gaussian if not specified)
+growth.modelFormula <- mass_next ~ mass + a
+# Sub-set the data frame so only the columns with relevant data are included
+growth.inputData <- exData[!is.na(exData$mass_next) & !is.na(exData$mass), ]
+```
+
+Sub-model of the probability of producing a fledging (rep). Binomial error distribution and a logit link function is used.
+```{r repSpec}
+# Define the model and the error family
+rep.modelFormula <- cbind(repF, 1 - repF) ~ mass_next
+rep.errorFamily <- binomial(link = "logit")
+# Sub-set the data frame so only the columns with relevant data are included
+rep.inputData <- exData[!is.na(exData$repF) & !is.na(exData$mass_next) & exData$a==1, ]
+```
+
+Sub-model for number of fledgings per successful female (fec). Poisson distributed and a log link function is used.
+```{r fecSpec}
+# Define the model and the error family
+fec.modelFormula <- Nfledglings ~ fox_next
+fec.errorFamily <- poisson(link = "log")
+# Sub-set the data frame so only the columns with relevant data are included
+fec.inputData <- exData[!is.na(exData$Nfledglings) & exData$a==1 & !is.na(exData$mass_next), ]
+```
+
+Specific mcmc parameters.
+```{r mcmcParams}
+# Define the MCMC parameters
+mcmcParams <- list(
+  numRuns = 1000,
+  numChains = 4,
+  numBurnIn = 500,
+  thinDensity = 1,
+  predictThinDensity = 1
+)
+```
+
+Vital rate models are all fitted simultaneously using the 'ipmNIMBLE' function. 
+```{r vitalFit, results='hide', warning=FALSE, message=FALSE}
+# Run the IPM
+ipmOut <- ipmNIMBLE(mcmcParams = mcmcParams,
+  # Define the fledgling survival sub-model
+  surv.modelFormula = surv.modelFormula, surv.errorFamily = surv.errorFamily, surv.inputData = surv.inputData,
+
+  # Define the fledging growth sub-model
+  growth.modelFormula = growth.modelFormula, growth.inputData = growth.inputData,
+
+  # Define the reproductive probability sub-model
+  rep.modelFormula = rep.modelFormula, rep.errorFamily = rep.errorFamily, rep.inputData = rep.inputData,
+  
+  # Define the fecundity sub-model
+  fec.modelFormula = fec.modelFormula, fec.errorFamily = fec.errorFamily, fec.inputData = fec.inputData,
+  
+  )
+```
+
+Extract some model outputs, e.g., survival submodel.
+```{r ipmOutput}
+
+# Retrieve the WAIC for the sub-model
+ipmOut$surv$WAIC
+
+# Retrieve the Bayesian R-squared for the sub-model
+setNames(
+  c(ipmOut$surv$rSquared$mean, ipmOut$surv$rSquared$quant0.025, ipmOut$surv$rSquared$quant0.975),
+  c("expected", "lower95credible", "upper95credible"))
+
+# Plot the DHARMa residual plots for the sub-model
+plot(ipmOut$surv$DHARMaResiduals)
+
+# Plot the margianl posterior distributions of the regression coefficients associated with the sub-model
+ipmOut$surv$parameterFigure
+ipmOut$fec$parameterFigure
+
+# Plot the trace plots of the MCMC of regression coefficients for the sub-model
+plot(ipmOut$surv$parameterSamples)
+
+# Plot of the Gelman-Rubin convergence diagnostic shrink plots for the sub-model
+gelman.plot(ipmOut$surv$parameterSamples)
+
+```
+
+## Kernel Creation
+
+We next define a data set for which we want to make predictions from (all predictors included in model).
+```{r testData}
+# Create a prediction data set to evaluate the kernels on
+testData <- data.frame(mass = c(seq(za0_range[1], za0_range[2], length.out = 100), 
+                                seq(za1_range[1], za1_range[2], length.out = 100)),
+                       a = rep(c(0,1),each=100),
+                       fox = 0,
+                       fox_next = 0)
+
+testData$mass_next <- testData$mass
+
+# Calculate the distance between each prediction point
+cellWidth <- diff(testData$mass[1:2])
+
+```
+
+Growth kernel only: 
+```{r growthKern}
+# Function to evaluate the growth kernel
+growthKern <- function(x, growth.response, growth.sd, cellWidth) {
+  dnorm(x, growth.response, growth.sd) * cellWidth
+}
+```
+
+Evaluating and plotting: 
+```{r growthKernEval}
+# Evaluate the growth kernel
+growthMat <- ipmKernelEvaluation(ipmOut, testData, testData$mass, growthKern, cellWidth = cellWidth)
+
+# Plot the expected values of the growth kernel matrix
+# Fledglings
+image(testData$mass[1:100], testData$mass[1:100], t(growthMat$expected[1:100,1:100]), xlab = "mass(t)", ylab = "mass(t + 1)")
+
+# Adults 
+image(testData$mass[101:200], testData$mass[101:200], t(growthMat$expected[101:200,101:200]), xlab = "mass(t)", ylab = "mass(t + 1)")
+
+# Pull out a specific sample from the MCMC samples e.g., 10th 
+image(testData$mass[1:100], testData$mass[1:100], t(growthMat$samples[1:100, 1:100 , 10]), xlab = "mass(t)", ylab = "mass(t + 1)")
+
+```
+
+Evaluate growth/survival kernel: 
+```{r rest}
+# Evaluate the growth/survival kernel
+growthSurvKern <- function(x, growth.response, growth.sd, surv.response, cellWidth) {
+  surv.response * growthKern(x, growth.response, growth.sd, cellWidth)
+}
+growthSurvMat <- ipmKernelEvaluation(ipmOut, testData, testData$mass, growthSurvKern, cellWidth = cellWidth)
+
+# Fledglings
+image(testData$mass[1:100], testData$mass[1:100], t(growthSurvMat$expected[1:100,1:100]), xlab = "mass(t)", ylab = "mass(t + 1)", main="fledgling survival and growth")
+
+# Adults
+image(testData$mass[101:200], testData$mass[101:200], t(growthSurvMat$expected[101:200,101:200]), xlab = "size(t)", ylab = "size(t + 1)", main="adult survival and growth")
+```
+
+```{r growthKern}
+# Function to evaluate the fledging size kernel
+recszKern <- function(x, recsz.response, cellWidth) {
+  dnorm(x, recsz.response, recsz.sd) * cellWidth
+}
+```
+
+
+```{r rest}
+# Recruitment kernel
+recsizeMean <- mean(exData$mass_next,na.rm = T)
+recsizeSD <- sd(exData$mass_next,na.rm = T)
+
+recKern <- function(x, surv.response, rep.response, fec.response, recsizeMean, recsizeSD, cellWidth) {
+
+  # How to add in if a == 0 then rep = 0???
+  
+  surv.response * rep.response * fec.response * 0.5 * dnorm(x, recsizeMean, recsizeSD) * cellWidth
+
+}
+
+recMat <- ipmKernelEvaluation(ipmOut, testData, testData$mass, recKern, recsizeMean = recsizeMean, recsizeSD = recsizeSD, cellWidth = cellWidth)
+
+#Fledglings
+image(testData$mass[1:100], testData$mass[1:100], t(recMat$expected[1:100,1:100]), xlab = "mass(t)", ylab = "mass(t + 1)")
+
+# Evaluate the full kernel
+fullKern <- function(x, growth.response, growth.sd, surv.response, rep.response, fec.response, recsizeMean, recsizeSD, cellWidth) {
+  
+  growthSurvKern(x, growth.response, growth.sd, surv.response, cellWidth) + 
+  
+  recKern(x, surv.response, rep.response, fec.response, recsizeMean, recsizeSD, cellWidth) 
+  }
+
+fullMat <- ipmKernelEvaluation(ipmOut, testData, testData$mass, fullKern, recsizeMean=recsizeMean, recsizeSD=recsizeSD, cellWidth = cellWidth)
+
+# Fledgings
+image(testData$mass[1:100], testData$mass[1:100], t(fullMat$expected[1:100,1:100]), xlab = "mass(t)", ylab = "mass(t + 1)")
+
+# Adults
+image(testData$mass[101:200], testData$mass[101:200], t(fullMat$expected[101:200,101:200]), xlab = "mass(t)", ylab = "mass(t + 1)")
+
+# Analyse the full kernel
+fullMatAnalysis <- ipmKernelAnalysis(fullMat)
+
+ggplot(data = data.frame(growthRate = fullMatAnalysis$assymPopGrowth)) + geom_histogram(aes(x = growthRate), fill = "#69b3a2", color = "#e9ecef") +
+  geom_vline(xintercept = fullMatAnalysis$assymPopGrowthSummary[4], linetype = "dashed") + geom_vline(xintercept = fullMatAnalysis$assymPopGrowthSummary[5], linetype = "dashed") +
+  geom_vline(xintercept = fullMatAnalysis$assymPopGrowthSummary[1]) +
+  theme_classic() + ylab("Count") + xlab("Asymptotic Growth Rate")
+
+ggplot(data = cbind(data.frame(mass = testData$mass), fullMatAnalysis$stableDistSummary)) +
+  geom_ribbon(aes(x = mass, ymin = lower95cred, ymax = upper95cred), fill = "#69b3a2", color = "#e9ecef") +
+  geom_line(aes(x = mass, y = mean)) +
+  theme_classic() + ylab("") + xlab("mass")
+
+```
+
