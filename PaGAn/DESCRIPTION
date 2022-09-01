@@ -1,0 +1,21 @@
+Package: PaGAn
+Type: Package
+Title: Paleo-Geography Analysis Package
+Version: 0.1.0
+Date: 2018-05-07
+Authors@R: c(person(given = "Joseph",
+           family = "Chipperfield",
+           role = c("aut"),
+           email = "joechip90@googlemail.com",
+           comment = c(ORCID = "0000-0003-3314-0846")))
+Maintainer: Joseph Chipperfield <joseph.chipperfield@nina.no>
+Description: A package of implementation of convienient implementations of models used in paleo-ecological analysis
+License: GPL-3
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.2
+Suggests: 
+    testthat (>= 2.1.0),knitr,rmarkdown
+RoxygenNote: 7.1.0
+VignetteBuilder: knitr
+Depends: 
+    R (>= 2.10)
