@@ -32,7 +32,7 @@ This example uses population data on the marsh violet, Viola palustris, from the
 
 ```{r dataset}
 # Download the data
-dlData <- read.csv("../example data/dataDroso.csv", header=T)
+dlData <- read.csv("../Example_DewyPine/dataDroso.csv", header=T)
 # Show a snippet of the data
 knitr::kable(head(dlData))
 ```
