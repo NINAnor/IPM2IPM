@@ -175,7 +175,7 @@ The next step in any IPM analysis is to create kernels for life history characte
 * __prec__ The precision of the error distribution of the sub-model
 * __scale__ The scale of the error distribution of the sub-model (can only be used for error distributions that have a scale parameter)
 
-We next define a data set for which we want to make predictions from.  In this example, we want to make predictions of the probabilities of arriving at a size in 2002 given a size in 2001 so we can use the 'seq' function in R to make a sequnce of sizes that wish to use as 2001 values.  This will be used as input data for the vital-rate model predictions ('response' and 'linpred') described earlier.  Our models here all only use 'size' as a predictor variable so we only need to have size in the prediction data set.  However, if our vital rate models had other covariates (such as temperature or precipitation) then we would need to provide those in our prediction data set too.
+We next define a data set for which we want to make predictions from.  In this example, we want to make predictions of the probabilities of arriving at a size in 2002 given a size in 2001 so we can use the 'seq' function in R to make a sequence of sizes that wish to use as 2001 values.  This will be used as input data for the vital-rate model predictions ('response' and 'linpred') described earlier.  Our models here all only use 'size' as a predictor variable so we only need to have size in the prediction data set.  However, if our vital rate models had other covariates (such as temperature or precipitation) then we would need to provide those in our prediction data set too.
 
 ```{r testData}
 # Create a prediction data set to evaluate the kernels on
