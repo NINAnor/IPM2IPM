@@ -62,19 +62,19 @@ megaMatrixAssembly <- function(stgMatrix, ipmKernels, states, kernelFrom, kernel
 }
 
 ## Example
-stgMatrix <- matrix(c(0, 1,
-                      1, 1),
-                      nrow = 2, ncol = 2, byrow = TRUE)
+#stgMatrix <- matrix(c(0, 1,
+#                      1, 1),
+##                      nrow = 2, ncol = 2, byrow = TRUE)
 
-ipmKernels <- list(growthSurvMat, growthSurvMat, recMat) # NOTE: Uses kernels from vignette example
-states <- c('Juvenile', 'Adult')
-kernelFrom <- c('Juvenile', 'Adult', 'Adult')
-kernelTo <- c('Adult', 'Adult', 'Juvenile')
+#ipmKernels <- list(growthSurvMat, growthSurvMat, recMat) # NOTE: Uses kernels from vignette example
+#states <- c('Juvenile', 'Adult')
+#kernelFrom <- c('Juvenile', 'Adult', 'Adult')
+#kernelTo <- c('Adult', 'Adult', 'Juvenile')
 #states <- c(1, 2)
 #kernelFrom <- c(1, 2, 2)
 #kernelTo <- c(2, 2, 1)
 
-test <- megaMatrixAssembly(stgMatrix, ipmKernels, states, kernelFrom, kernelTo)
-image(t(test$samples[,,1]))
-image(t(test$expected))
+#test <- megaMatrixAssembly(stgMatrix, ipmKernels, states, kernelFrom, kernelTo)
+#image(t(test$samples[,,1]))
+#image(t(test$expected))
 
