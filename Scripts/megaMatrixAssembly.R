@@ -53,8 +53,6 @@ megaMatrixAssembly <- function(stgMatrix, ipmKernels, states, kernelFrom, kernel
       megaMat.sam[megaRows,megaCols,i] <- ipmKernels[[k]]$samples[,,i]
     }
   }
-  # TODO: Check the indexing. The kernels may be ending up in the wrong position in the megamatrix.
-  # (or it might all be the fault of image() confusing the hell out of me.)
 
   ## Assemble sample matrices and average matrix in a list and return
   megaMat <- list(samples = megaMat.sam,
