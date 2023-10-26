@@ -24,9 +24,9 @@ library(coda)
 library(DHARMa)
 library(ggplot2)
 
-source("https://raw.githubusercontent.com/joechip90/PaGAn/master/R/mcmcInternals.R")
-source("https://raw.githubusercontent.com/joechip90/PaGAn/master/R/glmNIMBLE.R")
-source("https://raw.githubusercontent.com/joechip90/PaGAn/master/R/ipmNIMBLE.R")
+source("https://raw.githubusercontent.com/NINAnor/IPM2IPM/master/PaGAn/R/mcmcInternals.R")
+source("https://raw.githubusercontent.com/NINAnor/IPM2IPM/master/PaGAn/R/glmNIMBLE.R")
+source("https://raw.githubusercontent.com/NINAnor/IPM2IPM/master/PaGAn/R/ipmNIMBLE.R")
 ```
 
 ## Example Dataset
