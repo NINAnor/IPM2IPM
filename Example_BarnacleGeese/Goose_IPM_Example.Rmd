@@ -31,8 +31,8 @@ source("https://raw.githubusercontent.com/NINAnor/IPM2IPM/master/PaGAn/R/ipmNIMB
 ## Goose dataset
 Reproductive and survival data from the breeding grounds from 1991-2017.
 
-```{}
-# Data loaded seperately: shown here
+```{r loadData}
+exData <- read.csv("exData.csv")
 knitr::kable(head(exData))
 
 str(exData)
