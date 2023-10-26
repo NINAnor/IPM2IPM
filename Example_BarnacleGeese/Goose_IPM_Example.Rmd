@@ -84,10 +84,10 @@ Specific mcmc parameters.
 ```{r mcmcParams}
 # Define the MCMC parameters
 mcmcParams <- list(
-  numRuns = 1000,
+  numRuns = 100000,
   numChains = 4,
-  numBurnIn = 500,
-  thinDensity = 1,
+  numBurnIn = 10000,
+  thinDensity = 90,
   predictThinDensity = 1
 )
 ```
@@ -195,7 +195,7 @@ image(testData$mass[1:100], testData$mass[1:100], t(growthSurvMat$expected[1:100
 image(testData$mass[101:200], testData$mass[101:200], t(growthSurvMat$expected[101:200,101:200]), xlab = "size(t)", ylab = "size(t + 1)", main="adult survival and growth")
 ```
 
-```{r growthKern}
+```{r recszKern}
 # Function to evaluate the fledging size kernel
 recszKern <- function(x, recsz.response, cellWidth) {
   dnorm(x, recsz.response, recsz.sd) * cellWidth
@@ -203,7 +203,7 @@ recszKern <- function(x, recsz.response, cellWidth) {
 ```
 
 
-```{r rest}
+```{r rest_Full}
 # Recruitment kernel
 recsizeMean <- mean(exData$mass_next,na.rm = T)
 recsizeSD <- sd(exData$mass_next,na.rm = T)
