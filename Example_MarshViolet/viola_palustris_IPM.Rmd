@@ -20,6 +20,7 @@ library(parallel)
 library(coda)
 library(DHARMa)
 library(ggplot2)
+library(tidyverse)
 
 #source("https://raw.githubusercontent.com/joechip90/PaGAn/master/R/mcmcInternals.R")
 #source("https://raw.githubusercontent.com/joechip90/PaGAn/master/R/glmNIMBLE.R")
@@ -186,7 +187,7 @@ testData <- data.frame(size = seq(min(c(vpData$size,vpData$sizeNext),na.rm=T)*0.
 cellWidth <- diff(testData$size[1:2])
 ```
 
-For example, the growth kernel of Cory's example would be defined by the following kernel function:
+We define the growth kernel for this example would by the following kernel function:
 ```{r growthKern}
 # Function to evaluate the growth kernel
 growthKern <- function(x, growth.response, growth.sd, cellWidth) {
@@ -287,3 +288,71 @@ contourPlot2(t(fullMat$expected),testData$size, maxSize = maxSize, 0.03, 0)
 ```{r lambda}
 as.numeric(eigen(fullMat$expected)$value[1])
 ```
+
+## Integration with population-level data
+
+The goal of the IPM2IPM project was to integrate the estimation of trait-dependent vital rates with the analysis of population-level data on trait distribution and numbers. We have not yet developed code for full, simulataneous integration, but below illustrate one ad-hoc approach on integration using "empirical priors". 
+In practice, this approach uses the joint posterior distribution of all vital rate parameters as prior distributions in a second modelling step aimed at estimating population size and trait structure over time. This second model also extracts additional information on population-level processes from observational data on population size and trait distributions and is based on the code in "Scripts/EmpiricalPrior.R". 
+
+### Population-level data
+
+First, we need to prepare our population-level data.In lack of additional data, we here treat out input data, ``vpData``, as our population-level observations. 
+The population-level data needs to be reformatted into a matrix of observed trait densities (``obsTraitDensity``), where each row corresponds to a trait bin ``i`` and each column corresponds to a time step ``t``. The entries of the matrix are the numbers of individuals observed at time step ``t`` and whose measured trait value falls into trait class ``i``. 
+
+``` {r pop level data prep}
+## Define trait bins
+numTraitBins <- 10
+traitThresholds <- seq(min(c(vpData$size, vpData$sizeNext), na.rm = T)*0.9,
+    max(c(vpData$size, vpData$sizeNext), na.rm = T)*1.1, 
+    length.out = numTraitBins + 1)
+traitBins <- data.frame(Index = 1:numTraitBins, 
+                        lowerT = traitThresholds[1:numTraitBins],
+                        upperT = traitThresholds[2:(numTraitBins+1)])
+
+## Add trait bins to data
+vpData$traitBin <- NA
+for(i in 1:nrow(vpData)){
+  
+  if(!is.na(vpData$size[i])){
+      vpData$traitBin[i] <- which(vpData$size[i] > traitBins$lowerT & vpData$size[i] < traitBins$upperT)
+  }else{
+    vpData$traitBin[i] <- NA
+  }
+}
+
+## Convert data to trait density matrix
+obsTraitDensity <- vpData %>%
+  dplyr::mutate(timeStep = dplyr::case_when(trans == "09_10" ~ 1,
+                                            trans == "10_11" ~ 2,
+                                            trans == "11_12" ~ 3)) %>%
+  group_by(traitBin, timeStep) %>% 
+  summarise(count = n(), .groups = "keep") %>%
+  reshape2::acast(traitBin ~ timeStep)
+
+obsTraitDensity[which(is.na(obsTraitDensity))] <- 0
+obsTraitDensity
+
+```
+At the moment, the trait density matrix still includes individuals without trait measurements (``NA`` category). Before removing those, we make sure to count them and calculate what proportion of observed individuals did have trait values recorded: 
+
+```{r}
+## Number with NA trait values
+numTraitNA <- sum(obsTraitDensity["NA",])
+
+## Number with trait values
+numObsIndividuals <- sum(obsTraitDensity) - numTraitNA
+
+## Trait density matrix without missing values
+obsTraitDensity <- obsTraitDensity[which(rownames(obsTraitDensity) != "NA"),]
+obsTraitDensity
+```
+
+### Joint posteriors from vital rate models
+
+### NIMBLE function for projection matrix assembly
+
+### Implementation of population model
+
+### Results
+
+
