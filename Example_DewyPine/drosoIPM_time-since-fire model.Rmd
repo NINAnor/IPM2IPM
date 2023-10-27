@@ -1,0 +1,387 @@
+---
+title: "IPM example Drosophyllum lusitanicum"
+author: "Joachim Töpper, based on data from Maria Paniw and functions written by Joseph Chipperfield"
+date: "01 11 2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Integral Projection Models in PaGAn
+
+There are a number of fantastic packages for performing analysis of data using integral projection models (IPMs) in R such as [IPMpack](https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210x.12001) and [impr](https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.13683).  PaGAn also has its own implementation of Integral Projection Models. The PaGAn implementation of IPM has been designed with a focus on flexibility and an ability to embed the outputs from these models into further analysis. Under the hood PaGAn uses Bayesian techniques (powered by [NIMBLE](https://www.tandfonline.com/doi/full/10.1080/10618600.2016.1172487)) which means that full posterior estimates of the coefficients in vital rate functions, kernels, and population-level summaries.
+
+```{r libraries, results='hide', warning=FALSE, message=FALSE}
+# This chunk will be removed once the package is completed - in the meantime it loads the required libraries for the analysis and imports the relevant source files from the project GitHub pages
+library(tidyverse)
+library(nimble)
+library(parallel)
+library(coda)
+library(DHARMa)
+library(ggplot2)
+library(lme4)
+
+#source("https://raw.githubusercontent.com/joechip90/PaGAn/master/R/mcmcInternals.R")
+#source("https://raw.githubusercontent.com/joechip90/PaGAn/master/R/glmNIMBLE.R")
+#source("https://raw.githubusercontent.com/joechip90/PaGAn/master/R/ipmNIMBLE.R")
+
+source("https://raw.githubusercontent.com/NINAnor/IPM2IPM/master/PaGAn/R/mcmcInternals.R")
+source("https://raw.githubusercontent.com/NINAnor/IPM2IPM/master/PaGAn/R/glmNIMBLE.R")
+source("https://raw.githubusercontent.com/NINAnor/IPM2IPM/master/PaGAn/R/ipmNIMBLE.R")
+```
+
+## Example Dataset
+
+This example uses population data on the marsh violet, Viola palustris, from the seedclim project at the University of Bergen. See Töpper et al. 2018 (https://brage.nina.no/nina-xmlui/bitstream/handle/11250/2502326/T%25C3%25B6pper%2BThe%2Bdevil%2BGlobal%2BChange%2BBiology%2B2018%2Bpostprint.pdf?sequence=1&isAllowed=y)
+
+```{r dataset}
+# Download the data
+dlData <- read.csv("../Example_DewyPine/dataDroso.csv", header=T)
+# Show a snippet of the data
+knitr::kable(head(dlData))
+```
+
+```{r data handling}
+# the data are from a species adapted to fire regimes. The variables on TSF (=time since fire) express that. In this analysis we account for the fire-ecology by including TSF as a covariate in the vital rate models
+# Order the levels of TSF categories
+dlData$TSF=factor(dlData$TSF,levels = c("one", "two", "three",">three"))
+```
+
+```{r helper functions}
+### function for contour plot
+contourPlot2 <- function(M,meshpts,maxSize,upper,lower) {
+      q <- sum(meshpts<=maxSize);
+      filled.contour(meshpts[1:q],meshpts[1:q],M[1:q,1:q], zlim=c(upper,lower),
+                     xlab="size at time t", ylab="size at time t+1", color=heat.colors, nlevels=20, cex.lab=1.5,
+                     plot.axes = { axis(1); axis(2); lines(0:100, 0:100, lty=2)});
+      return(0);
+    }    
+
+
+
+
+
+
+
+
+```
+
+## Vital Rate Regressions
+
+The first stage for running an IPM is to run the vital rate regressions.  In PaGAn the user is allowed to have as many vital rate regressions as they need for their analysis and they can give those any name that they require.  Following Cory's example we start with the survival regression function. This vital rate is a logistic regression model with the survival status as the response and size as the only predictor variable: the data are assumed to have a binomial error distribution and a logit link function is used.
+
+```{r survSpec}
+# plot survival
+dlData %>%
+  ggplot(aes(x=size, y=surv, color=TSF)) + 
+  geom_jitter(height=0.1)
+
+# doing some pre model selection
+surv0=glmer(surv~1+(1|year),family=binomial,data=dlData)
+surv1=glmer(surv~size+(1|year),family=binomial,data=dlData)
+surv2=glmer(surv~size+TSF+(1|year),family=binomial,data=dlData)
+surv3=glmer(surv~size+TSF+size*TSF+(1|year),family=binomial,data=dlData)
+
+anova(surv0,surv1,surv2,surv3, test="Chisq")
+# we proceed with a an additive model
+rm(surv0,surv1,surv2,surv3)
+
+# Define the model and the error family
+surv.modelFormula <- cbind(surv, 1 - surv) ~ size + TSF
+surv.errorFamily <- binomial(link = "logit")
+# Sub-set the data frame so only the columns with relevant data are included
+surv.inputData <- dlData[!is.na(dlData$surv) & !is.na(dlData$size), ]
+```
+
+Next up is the sub-model for growth.  Again, following Cory's example we use a Gaussian regression with the size in year t as the response variable and the size in year t+1 (i.e. sizeNext) as the predictor variable.
+
+```{r growthSpec}
+# plot growth
+dlData %>%
+  ggplot(aes(x=size, y=sizeNext, color=TSF)) +
+  geom_point()
+
+# doing some pre model selection
+gr0=lmer(sizeNext~1+(1|year),data=dlData[!is.na(dlData$size)&!is.na(dlData$sizeNext),])
+gr1=lmer(sizeNext~size+(1|year),data=dlData[!is.na(dlData$size)&!is.na(dlData$sizeNext),])
+gr2=lmer(sizeNext~size+TSF+(1|year),data=dlData[!is.na(dlData$size)&!is.na(dlData$sizeNext),])
+gr3=lmer(sizeNext~size+TSF+size*TSF+(1|year),data=dlData[!is.na(dlData$size)&!is.na(dlData$sizeNext),])
+
+anova(gr0,gr1,gr2,gr3,test="Chisq")
+# we proceed with a an interactive model
+rm(gr0,gr1,gr2,gr3)
+
+# Define the model (error family not needed because it is assumed to be Gaussian if not specified)
+growth.modelFormula <- sizeNext ~ size*TSF
+# Sub-set the data frame so only the columns with relevant data are included
+growth.inputData <- dlData[!is.na(dlData$sizeNext) & !is.na(dlData$size), ]
+```
+
+Next, we provide 3 sub-models for fecundity.  In sub-model#1 we estimate the probability of reproducing (fl as a function of size), in sub-model#2 we estimate the number of flower stalks being produced if the plant is reproductive (fs as a function of size), and in sub-model#3 we estimate the number of flowers per flower stalk (fps as a finction of size). The errors are assumed to be binomial with logit link for the first and Poisson with log link function for the two latter.
+```{r fecSpec}
+# plot flowering
+dlData %>%
+  ggplot(aes(x=size, y=fl, color=TSF)) + 
+    geom_jitter(height=0.1)
+
+# pre model selection
+fl0=glmer(fl~1+(1|year),family=binomial,data=dlData)
+fl1=glmer(fl~size+(1|year),family=binomial,data=dlData)
+fl2=glmer(fl~size+TSF+(1|year),family=binomial,data=dlData)
+fl3=glmer(fl~size+TSF+size*TSF+(1|year),family=binomial,data=dlData)
+
+anova(fl0,fl1,fl2,fl3,test="Chisq")
+# we proceed with a an interactive model
+rm(fl0,fl1,fl2,fl3)
+
+# Define the model and the error family
+fec1.modelFormula <- cbind(fl, 1 - fl) ~ size*TSF
+fec1.errorFamily <- binomial(link = "logit")
+# Sub-set the data frame so only the columns with relevant data are included
+fec1.inputData <- dlData[!is.na(dlData$fl) & !is.na(dlData$size), ]
+
+
+# plot flower stalks
+dlData %>%
+  ggplot(aes(x=size, y=fs, color=TSF)) + 
+    geom_point()
+# pre model selection
+fs0=glmer(fs~1+(1|year),family=poisson,data=dlData)
+fs1=glmer(fs~size+(1|year),family=poisson,data=dlData)
+fs2=glmer(fs~size+TSF+(1|year),family=poisson,data=dlData)
+fs3=glmer(fs~size+TSF+size*TSF+(1|year),family=poisson,data=dlData)
+
+anova(fs0,fs1,fs2,fs3,test="Chisq")
+# we proceed with a an additive model
+rm(fs0,fs1,fs2,fs3)
+
+# Define the model and the error family
+fec2.modelFormula <- fs ~ size + TSF
+fec2.errorFamily <- poisson(link = "log")
+# Sub-set the data frame so only the columns with relevant data are included
+fec2.inputData <- dlData[!is.na(dlData$fs) & !is.na(dlData$size), ]
+
+
+# plot flowers per stalk
+dlData %>%
+  ggplot(aes(x=size, y=fps, color=TSF)) + 
+    geom_point()
+# pre model selection
+fps0=glmer(fps~1+(1|year),family=poisson,data=dlData)
+fps1=glmer(fps~size+(1|year),family=poisson,data=dlData)
+fps2=glmer(fps~size+TSF+(1|year),family=poisson,data=dlData)
+fps3=glmer(fps~size+TSF+size*TSF+(1|year),family=poisson,data=dlData)
+
+anova(fps0,fps1,fps2,fps3,test="Chisq")
+# we proceed with a an additive model
+rm(fps0,fps1,fps2,fps3)
+
+# Define the model and the error family
+fec3.modelFormula <- fps ~ size + TSF
+fec3.errorFamily <- poisson(link = "log")
+# Sub-set the data frame so only the columns with relevant data are included
+fec3.inputData <- dlData[!is.na(dlData$fps) & !is.na(dlData$size), ]
+
+# does seedling size vary with TSF?
+dlData %>%
+  ggplot(aes(x=TSFcont, y=sds)) + 
+    geom_point()
+
+dlData %>%
+  ggplot(aes(x=TSF, y=sds)) + 
+    geom_violin()
+# pre model selection
+sds0=lmer(sds~1+(1|year),data=dlData)
+sds1=lmer(sds~TSF+(1|year),data=dlData)
+
+anova(sds0,sds1,test="Chisq")
+# we proceed with a the TSF model
+rm(sds0,sds1)
+
+# Define the model and the error family
+fec4.modelFormula <- sds ~ TSF
+# Sub-set the data frame so only the columns with relevant data are included
+fec4.inputData <- dlData[!is.na(dlData$sds) & !is.na(dlData$TSF), ]
+```
+
+
+Because the model fitting mechanism in PaGAn uses [Markov Chain Monte Carlo (MCMC)](https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo) we can also specify some settings for the fitting algorithm.  This is done by using a list with the following possible entries:
+  * __numRuns__ The number of iteration that each chain will run (after the 'burn-in' phase has ended)
+* __numChains__ The number of chains to run
+* __numBurnIn__ The number of samples at the start of each chain to discard
+* __thinDensity__ Thinning parameter for the regression coefficients and error distribution parameters of the model.  This should usually be kept at 1 unless you are needed to run the chains for so long that you are running into memory problems before convergence
+* __predictThinDensity__ Thinning parameter for the predictions from the model.  In cases where the dataset is very large then the number of samples for each of the prediction densities can cause memory problems.  This parameter allows for separate control over thinning of the posterior prediction densities whilst maintaining more dense sampling of the regression coefficients
+
+```{r mcmcParams}
+# Define the MCMC parameters
+mcmcParams <- list(
+  numRuns = 1000,
+  numChains = 4,
+  numBurnIn = 500,
+  thinDensity = 1,
+  predictThinDensity = 1
+)
+```
+
+In PaGAn the vital rate models are all fitted simultaneously using the 'ipmNIMBLE' function.  Each vital rate sub-model must be given a name and the naming convention used to pass arguments to the function must be of the format '[sub-model name].[argument]' where '[sub-model name]' is replaced by the name of your vital-rate sub-model and '[argument]' is replaced by an argument to pass to the sub-model.  For example 'surv.modelFormula' would refer to the 'modelFormula' argument of the 'surv' sub-model.  You can name your vital-rate sub-models in any way you like as long as you avoid characters that are not alphanumeric and that you don't start the name of the sub-model with a digit.  You can provide as many sub-models as you like: in this example we are using three but you could have more or fewer as you feel neccessary for your application.  The 'ipmNIMBLE' function understands the following sub-model arguments:
+  * __modelFormula__ The formula for the vital rate regression using the standard model notation used in R's [glm function](https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/glm)
+* __errorFamily__ Specification for the family of the error distribution using R's [family objects](https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/family).  If this is not provided then a Gaussian error model is assumed.
+  * __inputData__ The data to use for the fitting of the vital rate.  This is optional and global objects will be used instead if this argument is not provided
+  * __regCoeffs__ An advanced setting that allows for regularization of the coefficients.  This defaults to "none" but can be "ridge" or "lasso" if those types of regression are required
+
+In addition to the sub-model arguments the 'ipmNIMBLE' has the following optional global arguments:
+  * __mcmcParams__ A list object containing the parameters for the MCMC
+  * __inputData__ A data frame that will be used as the input data is the 'inputData' arguments is not supplied to a sub-model
+  * __numCores__ Defaults to 1 but can set higher if you wish to use multiple cores to fit the model (sometimes useful for large datasets or where there are many vital rate functions).  However, using multicore analysis on Window's systems can result in the status information not being displayed to the console
+
+In this example we therefore call the function using the following arguments
+```{r vitalFit, results='hide', warning=FALSE, message=FALSE}
+# Run the IPM
+ipmOut <- ipmNIMBLE(mcmcParams = mcmcParams,
+                    # Define the survival sub-model
+                    surv.modelFormula = surv.modelFormula, surv.errorFamily = surv.errorFamily, surv.inputData = surv.inputData,
+                    # Define the growth sub-model
+                    growth.modelFormula = growth.modelFormula, growth.inputData = growth.inputData,
+                    # Define the fecundity sub-models
+                    fec1.modelFormula = fec1.modelFormula, fec1.errorFamily = fec1.errorFamily, fec1.inputData = fec1.inputData,
+                    fec2.modelFormula = fec2.modelFormula, fec2.errorFamily = fec2.errorFamily, fec2.inputData = fec2.inputData,
+                    fec3.modelFormula = fec3.modelFormula, fec3.errorFamily = fec3.errorFamily, fec3.inputData = fec3.inputData,
+                    fec4.modelFormula = fec4.modelFormula, fec4.inputData = fec4.inputData
+)
+```
+
+After the vital rate models have been fit then we can extract some of the model outputs.  The resultant 'ipmOut' object is a list with a named argument for each of the vital rate sub-models.  Each of the sub-models has a long list of outputs that can be explored.  For example, for the survival submodel we can explore the following outputs:
+```{r ipmOutput}
+# Retrieve the WAIC for the sub-model
+ipmOut$surv$WAIC
+# Retrieve the Bayesian R-squared for the sub-model
+setNames(
+  c(ipmOut$surv$rSquared$mean, ipmOut$surv$rSquared$quant0.025, ipmOut$surv$rSquared$quant0.975),
+  c("expected", "lower95credible", "upper95credible"))
+# Plot the DHARMa residual plots for the sub-model
+plot(ipmOut$surv$DHARMaResiduals)
+# Plot the marginal posterior distributions of the regression coefficients associated with the sub-model
+ipmOut$surv$parameterFigure
+ipmOut$growth$parameterFigure
+# Plot the trace plots of the MCMC of regression coefficients for the sub-model
+plot(ipmOut$surv$parameterSamples)
+plot(ipmOut$growth$parameterSamples)
+# Plot of the Gelman-Rubin convergence diagnostic shrink plots for the sub-model
+gelman.plot(ipmOut$surv$parameterSamples)
+```
+
+## Kernel Creation
+The next step in any IPM analysis is to create kernels for life history characteristics that we are interested in.  In PaGAn we define kernels by creating R functions that combines the predictions of the vital rate functions in such a way as to calculate the life history trait that you are interested in.  If your function has any arguments of the form '[sub-model name].[aspect]' where '[sub-model name]' is the name of one of your vital rate sub-models then the relevant 'aspect' of that vital rate is provided to the function.  The current aspects can be requested:
+  * __response__ A prediction from the vital rate sub-model (on the response scale) according to an input data set (see later)
+* __linpred__ A prediction from the vital rate sub-model (on the linear predictor scale) according to an input data set (see later)
+* __sd__ The standard deviation of the error distribution of the sub-model
+* __var__ The variance of the error distribution of the sub-model
+* __prec__ The precision of the error distribution of the sub-model
+* __scale__ The scale of the error distribution of the sub-model (can only be used for error distributions that have a scale parameter)
+
+We next define a data set for which we want to make predictions from.  In this example, we want to make predictions of the probabilities of arriving at a size in year t+1 given a size in year t so we can use the 'seq' function in R to make a sequence of sizes that wish to use as 2001 values.  This will be used as input data for the vital-rate model predictions ('response' and 'linpred') described earlier.  Our models here all only use 'size' as a predictor variable so we only need to have size in the prediction data set.  However, if our vital rate models had other covariates (such as temperature or precipitation) then we would need to provide those in our prediction data set too.
+
+```{r testData}
+# Create a prediction data set to evaluate the kernels on
+testData <- data.frame(size = rep(seq(min(c(dlData$size,dlData$sizeNext),na.rm=T)*0.9,
+                                  max(c(dlData$size,dlData$sizeNext),na.rm=T)*1.1, 
+                                  length.out = 100),
+                                  4),
+                       TSF = rep(c("one", "two", "three", ">three"),each=100))
+# Calcualte the distance between each prediction point
+cellWidth <- diff(testData$size[1:2])
+```
+
+For example, the growth kernel of Cory's example would be defined by the following kernel function:
+```{r growthKern}
+# Function to evaluate the growth kernel
+growthKern <- function(x, growth.response, growth.sd, cellWidth) {
+  dnorm(x, growth.response, growth.sd) * cellWidth
+}
+```
+
+
+#### working until here ####
+
+The first argument of the kernel function must be the value for which the probability density is being estimated (here the 2002 size after growth).  We can then use the 'ipmKernelEvaluation' function to evaluate this function.
+```{r growthKernEval}
+# Evaluate the growth kernel
+growthMat <- ipmKernelEvaluation(ipmOut, testData, testData$size, growthKern, cellWidth = cellWidth)
+# Plot the expected values of the growth kernel matrix
+image(testData$size, testData$size, t(growthMat$expected), xlab = "size(t)", ylab = "size(t + 1)")
+# Pull out a specific sample from the MCMC samples (here the 10th)
+image(testData$size, testData$size, t(growthMat$samples[, , 10]), xlab = "size(t)", ylab = "size(t + 1)")
+```
+
+You can see from this output that 'ipmKernelEvaluation' function produces a list with two elements: __expected__ which is the expected kernel matrix and __samples__ which is the kernel matrix evaluated for each of the samples from the MCMC.  Because this analysis is Bayesian we do not just have one kernel matrix but whole posterior distribution of kernel matrices.  The user can also specify other arguments to be passed to the kernel function through providing as named arguments in the 'ipmKernelEvaluation' function.
+
+```{r growth/survival}
+# Evaluate the growth/survival kernel
+growthSurvKern <- function(x, growth.response, growth.sd, surv.response, cellWidth) {
+  growthKern(x, growth.response, growth.sd, cellWidth) * surv.response
+}
+growthSurvMat <- ipmKernelEvaluation(ipmOut, testData, testData$size, growthSurvKern, cellWidth = cellWidth)
+image(testData$size, testData$size, t(growthSurvMat$expected), xlab = "size(t)", ylab = "size(t + 1)")
+```
+
+```{r fecundity kernel}
+# Evaluate the recruitment kernel
+seedsEstabCap <- 9.8
+fecsizeMean <- mean(dlData$sds, na.rm=T)
+fecsizeSD <- sd(dlData$sds, na.rm=T)
+fecKern <- function(x, fec1.response, fec2.response, seedsEstabCap, fecsizeMean, fecsizeSD, cellWidth) {
+  fec1.response * fec2.response * seedsEstabCap * dnorm(x, fecsizeMean, fecsizeSD) * cellWidth
+}
+fecMat <- ipmKernelEvaluation(ipmOut, testData, testData$size, fecKern, seedsEstabCap = seedsEstabCap, fecsizeMean = fecsizeMean, fecsizeSD = fecsizeSD, cellWidth = cellWidth)
+image(testData$size, testData$size, t(fecMat$expected), xlab = "size(t)", ylab = "size(t + 1)")
+```
+
+
+```{r full IPM}
+# Evaluate the full kernel
+fullKern <- function(x, growth.response, growth.sd, surv.response, fec1.response, fec2.response, seedsEstabCap, establishProb, fecsizeMean, fecsizeSD, cellWidth) {
+    growthSurvKern(x, growth.response, growth.sd, surv.response, cellWidth) + 
+    fecKern(x, fec1.response, fec2.response, seedsEstabCap, fecsizeMean, fecsizeSD, cellWidth)
+}
+fullMat <- ipmKernelEvaluation(ipmOut, testData, testData$size, fullKern, seedsEstabCap = seedsEstabCap, fecsizeMean = fecsizeMean, fecsizeSD = fecsizeSD, cellWidth = cellWidth)
+image(testData$size, testData$size, t(fullMat$expected), xlab = "size(t)", ylab = "size(t + 1)")
+# Analyse the full kernel
+fullMatAnalysis <- ipmKernelAnalysis(fullMat)
+ggplot(data = data.frame(growthRate = fullMatAnalysis$assymPopGrowth)) + geom_histogram(aes(x = growthRate), fill = "#69b3a2", color = "#e9ecef") +
+  geom_vline(xintercept = fullMatAnalysis$assymPopGrowthSummary[4], linetype = "dashed") + geom_vline(xintercept = fullMatAnalysis$assymPopGrowthSummary[5], linetype = "dashed") +
+  geom_vline(xintercept = fullMatAnalysis$assymPopGrowthSummary[1]) +
+  theme_classic() + ylab("Count") + xlab("Asymptotic Growth Rate")
+ggplot(data = cbind(data.frame(size = testData$size), fullMatAnalysis$stableDistSummary)) +
+  geom_ribbon(aes(x = size, ymin = lower95cred, ymax = upper95cred), fill = "#69b3a2", color = "#e9ecef") +
+  geom_line(aes(x = size, y = mean)) +
+  theme_classic() + ylab("") + xlab("Size")
+```
+``` {r all kernel images}
+image(testData$size, testData$size, t(growthSurvMat$expected), xlab = "size(t)", ylab = "size(t + 1)")
+image(testData$size, testData$size, t(fecMat$expected), xlab = "size(t)", ylab = "size(t + 1)")
+
+
+image(testData$size, testData$size, t(fullMat$expected), xlab = "size(t)", ylab = "size(t + 1)")
+```
+
+```{r contour plot function}
+contourPlot2 <- function(M,meshpts,maxSize,upper,lower) {
+      q <- sum(meshpts<=maxSize);
+      filled.contour(meshpts[1:q],meshpts[1:q],M[1:q,1:q], zlim=c(upper,lower),
+                     xlab="size at time t", ylab="size at time t+1", color=heat.colors, nlevels=20, cex.lab=1.5,
+                     plot.axes = { axis(1); axis(2); lines(0:100, 0:100, lty=2)});
+      return(0);
+}  
+```
+
+``` {r all kernel countour plots}
+maxSize <- max(c(dlData$size,dlData$sizeNext),na.rm=T)*1.1
+contourPlot2(t(growthSurvMat$expected),testData$size, maxSize = maxSize, 0.03, 0)
+contourPlot2(t(fecMat$expected),testData$size, maxSize = maxSize, 0.01, 0)
+contourPlot2(t(fullMat$expected),testData$size, maxSize = maxSize, 0.03, 0)
+```
+```{r lambda}
+as.numeric(eigen(fullMat$expected)$value[1])
+```
