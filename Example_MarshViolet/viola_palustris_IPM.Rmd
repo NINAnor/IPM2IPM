@@ -349,6 +349,23 @@ obsTraitDensity
 
 ### Joint posteriors from vital rate models
 
+Next we need to assemble the joint posterior for all vital rate parameters in a matrix ``vitalRateParams`` whose rows correspond to posterior samples and whose columns correspond to individual parameters. 
+
+```{r}
+## Assemble joint posterior
+for(i in 1:length(ipmOut)){
+  if(i == 1){
+    vitalRateParam <- as.matrix(ipmOut[[i]]$parameterSamples)
+  }else{
+    vitalRateParam <- cbind(vitalRateParam, as.matrix(ipmOut[[i]]$parameterSamples))
+  }
+}
+
+## List vital rate parameters
+vitalRateParam_List <- colnames(vitalRateParam)
+numVitalParams <- length(vitalRateParam_List)
+```
+
 ### NIMBLE function for projection matrix assembly
 
 ### Implementation of population model
