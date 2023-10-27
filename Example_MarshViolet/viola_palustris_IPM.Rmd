@@ -339,12 +339,14 @@ At the moment, the trait density matrix still includes individuals without trait
 ## Number with NA trait values
 numTraitNA <- sum(obsTraitDensity["NA",])
 
-## Number with trait values
+## Number and proportion with trait values
 numObsIndividuals <- sum(obsTraitDensity) - numTraitNA
-
+propObsTraits <- numObsIndividuals / (numObsIndividuals + numTraitNA)
+  
 ## Trait density matrix without missing values
 obsTraitDensity <- obsTraitDensity[which(rownames(obsTraitDensity) != "NA"),]
 obsTraitDensity
+
 ```
 
 ### Joint posteriors from vital rate models
@@ -367,6 +369,61 @@ numVitalParams <- length(vitalRateParam_List)
 ```
 
 ### NIMBLE function for projection matrix assembly
+
+In the next step, we need to write a nimbleFunction that we can use within out NIMBLE population model to assemble a projection matrix with ``numTraitBins`` trait classes based on our vital rate parameters. 
+We do not have a generic implementation of this function yet, so as of now this needs to be written specifically for each study/population. 
+
+```{r}
+
+## Define midpoints of trait binds for kernel evaluation
+midPointTraitBins <- (traitBins$lowerT + traitBins$upperT)/2
+
+## 
+projCalc_viola <- function(interceptsurvCoeff,
+                           sizesurvCoeff,
+                           interceptgrowthCoeff,
+                           sizeNextgrowthPrec,
+                           sizegrowthCoeff,
+                           interceptfec1Coeff,
+                           sizefec1Coeff,
+                           interceptfec2Coeff,
+                           sizefec2Coeff,
+                           interceptclo1Coeff,
+                           sizeclo1Coeff,
+                           interceptclo2Coeff,
+                           sizeclo2Coeff,
+                           interceptclo3Coeff,
+                           sizeNextclo3Pre,
+                           sizeclo3Coeff,
+                           seedsCap,
+                           establishProb,
+                           numTraitBins,
+                           midPointTraitBin){
+  
+  ## Assemble survival-growth transition matrix
+  GS_mat <- matrix(0, nrow = numTraitBins, ncol = numTraitBins)
+  
+  for(i in 1:numTraitBins){
+    
+    sizeFrom <- midPointTraitBins[i]
+    surv_i <- plogis(qlogis(interceptsurvCoeff) + sizesurvCoeff*sizeFrom)
+      
+    for(j in 1:numTraitBins){
+
+      sizeTo <- midPointTraitBin[j]
+      
+      growth_ij
+      
+      GS_mat[i, j] <- surv_i * growth_ij
+    }
+  }
+  ## Assemble reproduction matrix
+  
+  ## Assemble clonality matrix
+  
+  
+}
+```
 
 ### Implementation of population model
 
