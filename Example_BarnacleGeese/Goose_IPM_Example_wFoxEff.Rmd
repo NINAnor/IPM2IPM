@@ -29,16 +29,16 @@ library(fields)
 source("https://raw.githubusercontent.com/NINAnor/IPM2IPM/master/PaGAn/R/mcmcInternals.R")
 source("https://raw.githubusercontent.com/NINAnor/IPM2IPM/master/PaGAn/R/glmNIMBLE.R")
 source("https://raw.githubusercontent.com/NINAnor/IPM2IPM/master/PaGAn/R/ipmNIMBLE.R")
-source("C:/Users/kate.matthews/OneDrive - NINA/NINA Projects/IPM2IPM/Scripts/megaMatrixAssembly.R")
+source("Scripts/megaMatrixAssembly.R")
 ```
 
 ## Example Dataset
 
-This example uses individual-based data on barnacle geese (branta leucopsis) collected at their breeding grounds at Ny-Ålesund, Svalbard between 1991 and 2017. See Layton-Matthews et al. (2019, Journal Animal Ecology) for details on the data collection methods: https://doi.org/10.1111/1365-2656.13001. Demographic data (exData.csv file) includes individual (N=1669) observational data, with columns describing age class (a, fledging = 0 & adult = 1), whether an individual survived from year t to t+1 (surv), body mass in grams for year t (mass) and t+1 (mass_next). Fecundity is recorded by two parameters: whether females had any offspring or not (repF, 0 or 1) and the number of fledgings per female for those that bred successfully (Nfledgling).
+This example uses individual-based data on barnacle geese (branta leucopsis) collected at their breeding grounds at Ny-Alesund, Svalbard between 1991 and 2017. See Layton-Matthews et al. (2019, Journal Animal Ecology) for details on the data collection methods: https://doi.org/10.1111/1365-2656.13001. Demographic data (exData.csv file) includes individual (N=1669) observational data, with columns describing age class (a, fledging = 0 and adult = 1), whether an individual survived from year t to t+1 (surv), body mass in grams for year t (mass) and t+1 (mass_next). Fecundity is recorded by two parameters: whether females had any offspring or not (repF, 0 or 1) and the number of fledgings per female for those that bred successfully (Nfledgling).
 
 ```{r loadData}
 # Load data and show a snippet of the dataframe
-exData <- read.csv("exData.csv",sep=";")
+exData <- read.csv("Example_BarnacleGeese/exData.csv",sep=";")
 knitr::kable(head(exData))
 
 # Save the range of body mass values for fledgings and adults seperately
@@ -59,29 +59,33 @@ surv_f.modelFormula <- cbind(surv, 1 - surv) ~ mass
 surv_f.errorFamily <- binomial(link = "logit")
 
 # Sub-set the data frame so only the columns with relevant data are included
-surv_f.inputData <- exData[!is.na(exData$surv) & !is.na(exData$mass) & exData$a==0, ]
+surv_f.inputData <- exData[!is.na(exData$surv) & 
+                           !is.na(exData$mass) & exData$a==0, ]
 
 # Define the model and the error family
 surv_a.modelFormula <- cbind(surv, 1 - surv) ~ mass
 surv_a.errorFamily <- binomial(link = "logit")
 
 # Sub-set the data frame so only the columns with relevant data are included
-surv_a.inputData <- exData[!is.na(exData$surv) & !is.na(exData$mass) & exData$a==1, ]
+surv_a.inputData <- exData[!is.na(exData$surv) & 
+                           !is.na(exData$mass) & exData$a==1, ]
 
 ```
 
 Next we specify the growth (change in mass) model. We specify a Gaussian regression with body mass at t+1 as the response variable and body mass at t and age class (a) as predictors. 
 
 ```{r growthSpec}
-# Define the model (error family not needed because it is assumed to be Gaussian if not specified)
+# Define the model (error family not needed as assumed to be Gaussian)
 growth_f.modelFormula <- mass_next ~ mass
 # Sub-set the data frame so only the columns with relevant data are included
-growth_f.inputData <- exData[!is.na(exData$mass_next) & !is.na(exData$mass) & exData$a==0, ]
+growth_f.inputData <- exData[!is.na(exData$mass_next) & 
+                            !is.na(exData$mass) & exData$a==0, ]
 
-# Define the model (error family not needed because it is assumed to be Gaussian if not specified)
+# Define the model (error family not needed as assumed to be Gaussian)
 growth_a.modelFormula <- mass_next ~ mass
 # Sub-set the data frame so only the columns with relevant data are included
-growth_a.inputData <- exData[!is.na(exData$mass_next) & !is.na(exData$mass) & exData$a==1, ]
+growth_a.inputData <- exData[!is.na(exData$mass_next) & 
+                             !is.na(exData$mass) & exData$a==1, ]
 
 ```
 
@@ -92,7 +96,8 @@ Then, we specify two sub-models to describew for fecundity. First, we estimate t
 rep.modelFormula <- cbind(repF, 1 - repF) ~ mass_next
 rep.errorFamily <- binomial(link = "logit")
 # Sub-set the data frame so only the columns with relevant data are included
-rep.inputData <- exData[!is.na(exData$repF) & !is.na(exData$mass_next) & exData$a==1, ]
+rep.inputData <- exData[!is.na(exData$repF) & 
+                        !is.na(exData$mass_next) & exData$a==1, ]
 ```
 
 Finally, the second sub-model then estimates the brood size (number of fledgings) per successfully breeding female (fec). Here, we assumed a Poisson error distribution and a log link function is used.
@@ -102,7 +107,8 @@ Finally, the second sub-model then estimates the brood size (number of fledgings
 fec.modelFormula <- Nfledglings ~ fox_next
 fec.errorFamily <- poisson(link = "log")
 # Sub-set the data frame so only the columns with relevant data are included
-fec.inputData <- exData[!is.na(exData$Nfledglings) & !is.na(exData$mass_next) & exData$a==1, ]
+fec.inputData <- exData[!is.na(exData$Nfledglings) &
+                        !is.na(exData$mass_next)&exData$a==1,]
 ```
 
 Because the model fitting mechanism in PaGAn uses [Markov Chain Monte Carlo (MCMC)](https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo) we can also specify some settings for the fitting algorithm.  This is done by using a list with the following possible entries:
@@ -134,29 +140,44 @@ In addition to the sub-model arguments the 'ipmNIMBLE' has the following optiona
   * __inputData__ A data frame that will be used as the input data is the 'inputData' arguments is not supplied to a sub-model
   * __numCores__ Defaults to 1 but can set higher if you wish to use multiple cores to fit the model (sometimes useful for large datasets or where there are many vital rate functions).  However, using multicore analysis on Window's systems can result in the status information not being displayed to the console
 
-In this example we therefore call the function using the following arguments
+In this example we therefore call the function using the following arguments;
 
 ```{r vitalFit, results='hide', warning=FALSE, message=FALSE}
 # Run the IPM
 ipmOut <- ipmNIMBLE(mcmcParams = mcmcParams,
   # Define the survival sub-models
-  surv_f.modelFormula = surv_f.modelFormula, surv_f.errorFamily = surv_f.errorFamily, surv_f.inputData = surv_f.inputData,
-  surv_a.modelFormula = surv_a.modelFormula, surv_a.errorFamily = surv_a.errorFamily, surv_a.inputData = surv_a.inputData,
+  # Fledglings
+  surv_f.modelFormula = surv_f.modelFormula, 
+  surv_f.errorFamily = surv_f.errorFamily, 
+  surv_f.inputData = surv_f.inputData,
+  
+  # Adults
+  surv_a.modelFormula = surv_a.modelFormula, 
+  surv_a.errorFamily = surv_a.errorFamily, 
+  surv_a.inputData = surv_a.inputData,
 
   # Define the growth sub-models
-  growth_f.modelFormula = growth_f.modelFormula, growth_f.inputData = growth_f.inputData,
-  growth_a.modelFormula = growth_a.modelFormula, growth_a.inputData = growth_a.inputData,
+  # Fledglings
+  growth_f.modelFormula = growth_f.modelFormula, 
+  growth_f.inputData = growth_f.inputData,
+  #Adults
+  growth_a.modelFormula = growth_a.modelFormula, 
+  growth_a.inputData = growth_a.inputData,
 
   # Define the reproductive probability sub-model
-  rep.modelFormula = rep.modelFormula, rep.errorFamily = rep.errorFamily, rep.inputData = rep.inputData,
+  rep.modelFormula = rep.modelFormula, 
+  rep.errorFamily = rep.errorFamily, 
+  rep.inputData = rep.inputData,
   
   # Define the brood size sub-model
-  fec.modelFormula = fec.modelFormula, fec.errorFamily = fec.errorFamily, fec.inputData = fec.inputData,
+  fec.modelFormula = fec.modelFormula, 
+  fec.errorFamily = fec.errorFamily,
+  fec.inputData = fec.inputData,
   
   )
 ```
 
-After the vital rate models have been fit then we can extract some of the model outputs.  The resultant 'ipmOut' object is a list with a named argument for each of the vital rate sub-models.  Each of the sub-models has a long list of outputs that can be explored. For example, for the survival submodel we can explore the following outputs:
+After the vital rate models have been fit  we can then extract some of the model outputs. The resultant 'ipmOut' object is a list with a named argument for each of the vital rate sub-models. Each of the sub-models has a long list of outputs. For example, for the survival sub-model we can explore the following outputs:
 
 ```{r ipmOutput}
 
@@ -165,20 +186,23 @@ ipmOut$surv_a$WAIC
 
 # Retrieve the Bayesian R-squared for the sub-model
 setNames(
-  c(ipmOut$surv_a$rSquared$mean, ipmOut$surv_a$rSquared$quant0.025, ipmOut$surv_a$rSquared$quant0.975),
+  c(ipmOut$surv_a$rSquared$mean, 
+    ipmOut$surv_a$rSquared$quant0.025, 
+    ipmOut$surv_a$rSquared$quant0.975),
   c("expected", "lower95credible", "upper95credible"))
 
 # Plot the DHARMa residual plots for the sub-model
 plot(ipmOut$surv_a$DHARMaResiduals)
 
-# Plot the margianl posterior distributions of the regression coefficients associated with the sub-model
+# Plot marginal posterior distributions of the regression coefficients
+ipmOut$surv_f$parameterFigure
 ipmOut$surv_a$parameterFigure
 ipmOut$growth_a$parameterFigure
 
-# Plot the trace plots of the MCMC of regression coefficients for the sub-model
+# Plot the trace plots of the MCMC of regression coefficients
 plot(ipmOut$surv_a$parameterSamples)
 
-# Plot of the Gelman-Rubin convergence diagnostic shrink plots for the sub-model
+# Plot of  Gelman-Rubin convergence diagnostic shrink plots
 gelman.plot(ipmOut$surv_a$parameterSamples)
 
 ```
@@ -192,13 +216,13 @@ The next step in any IPM analysis is to create kernels for life history characte
 * __prec__ The precision of the error distribution of the sub-model
 * __scale__ The scale of the error distribution of the sub-model (can only be used for error distributions that have a scale parameter)
 
-We next define a data set for which we want to make predictions from.  In this example, we want to make predictions of the probabilities of arriving at a mass in year t+1 given a mass in t so we can use the 'seq' function in R to make a sequence of masses that wish to use. This will be used as input data for the vital-rate model predictions ('response' and 'linpred') described earlier.  Our models here all only use 'mass' as a predictor variable so we only need to have mass in the prediction data set. 
+We next define a data set for which we want to make predictions from. In this example, we want to make predictions of the probabilities of arriving at a mass in year t+1 given a mass in t so we can use the 'seq' function in R to make a sequence of masses that wish to use. This will be used as input data for the vital-rate model predictions ('response' and 'linpred') described earlier.  Our models here all only use 'mass' as a predictor variable so we only need to have mass in the prediction data set. 
 
 However, if our vital rate models had other additional covariates (e.g., temperature or precipitation) then we would need to provide those in our prediction data set too for a given level of that covariate (e.g., mean covariate, 0.5 degrees warming)
 
 ```{r testData}
 testData <- data.frame(mass = seq(za0_range[1]*0.9, za1_range[2]*1.1, 
-                                  length.out = 5),
+                                  length.out = 100),
                        fox_next=0)
 
 testData$mass_next <- testData$mass
@@ -229,17 +253,27 @@ The first argument of the kernel function must be the value for which the probab
 
 ```{r growthKernEval}
 # Evaluate the growth kernel
-growthMat_f <- ipmKernelEvaluation(ipmOut, testData, testData$mass, growthKern_f, cellWidth = cellWidth)
-growthMat_a <- ipmKernelEvaluation(ipmOut, testData, testData$mass, growthKern_a, cellWidth = cellWidth)
+growthMat_f <- ipmKernelEvaluation(ipmOut, 
+                                   testData, testData$mass, 
+                                   growthKern_f, 
+                                   cellWidth = cellWidth)
+
+growthMat_a <- ipmKernelEvaluation(ipmOut, testData, 
+                                   testData$mass, 
+                                   growthKern_a, 
+                                   cellWidth = cellWidth)
 
 # Plot the expected values of the growth kernel matrix - for fledglings
-image(testData$mass, testData$mass, t(growthMat_f$expected), xlab = "mass(t)", ylab = "mass(t + 1)")
+image(testData$mass, testData$mass, t(growthMat_f$expected), 
+      xlab = "mass(t)", ylab = "mass(t + 1)")
 
 # Plot the expected values of the growth kernel matrix - for adults
-image(testData$mass, testData$mass, t(growthMat_a$expected), xlab = "mass(t)", ylab = "mass(t + 1)")
+image(testData$mass, testData$mass, t(growthMat_a$expected), 
+      xlab = "mass(t)", ylab = "mass(t + 1)")
 
 # Pull out a specific sample from the MCMC samples e.g., 10th (for adults)
-image(testData$mass, testData$mass, t(growthMat_a$samples[, , 10]), xlab = "mass(t)", ylab = "mass(t + 1)")
+image(testData$mass, testData$mass, t(growthMat_a$samples[, , 10]), 
+      xlab = "mass(t)", ylab = "mass(t + 1)")
 
 ```
 
@@ -247,22 +281,35 @@ You can see from this output that 'ipmKernelEvaluation' function produces a list
 
 ```{r growth/survival}
 # Evaluate the growth/survival kernel - fledglings
-growthSurvKern_f <- function(x, surv_f.response, growth_f.response, growth_f.sd, cellWidth) {
+growthSurvKern_f <- 
+  function(x, surv_f.response, growth_f.response, growth_f.sd, cellWidth) {
   surv_f.response * growthKern_f(x, growth_f.response, growth_f.sd, cellWidth)
 }
-growthSurvMat_f <- ipmKernelEvaluation(ipmOut, testData, testData$mass, growthSurvKern_f, cellWidth = cellWidth)
+growthSurvMat_f <- ipmKernelEvaluation(ipmOut, 
+                                       testData, 
+                                       testData$mass, 
+                                       growthSurvKern_f, 
+                                       cellWidth = cellWidth)
 
 # Plot the expected values of the growth survival kernel matrix
-image(testData$mass, testData$mass, t(growthSurvMat_f$expected), xlab = "size(t)", ylab = "size(t + 1)", main="fledgling survival and growth")
+image(testData$mass, testData$mass, t(growthSurvMat_f$expected), 
+      xlab = "size(t)", ylab = "size(t + 1)", 
+      main="fledgling survival and growth")
 
 # Evaluate the growth/survival kernel - adults
-growthSurvKern_a <- function(x, surv_a.response, growth_a.response, growth_a.sd, cellWidth) {
+growthSurvKern_a <- 
+  function(x, surv_a.response, growth_a.response, growth_a.sd, cellWidth) {
   surv_a.response * growthKern_a(x, growth_a.response, growth_a.sd, cellWidth)
 }
-growthSurvMat_a <- ipmKernelEvaluation(ipmOut, testData, testData$mass, growthSurvKern_a, cellWidth = cellWidth)
+growthSurvMat_a <- ipmKernelEvaluation(ipmOut, 
+                                       testData, 
+                                       testData$mass, 
+                                       growthSurvKern_a, 
+                                       cellWidth = cellWidth)
 
 # Plot the expected values of the growth survival kernel matrix
-image(testData$mass, testData$mass, t(growthSurvMat_a$expected), xlab = "size(t)", ylab = "size(t + 1)", main="adult survival and growth")
+image(testData$mass, testData$mass, t(growthSurvMat_a$expected), 
+      xlab = "size(t)", ylab = "size(t + 1)", main="adult survival and growth")
 
 ```
 
@@ -281,16 +328,21 @@ recsizeMean <- mean(exData$mass_next,na.rm = T)
 recsizeSD <- sd(exData$mass_next,na.rm = T)
 sexratio <- 0.5
 
-recKern <- function(x, surv_a.response, rep.response, fec.response, recsizeMean, recsizeSD, cellWidth) {
+recKern <- function(x, surv_a.response, rep.response, 
+                    fec.response, recsizeMean, recsizeSD, cellWidth) {
 
-  surv_a.response * rep.response * fec.response * sexratio * dnorm(x, recsizeMean, recsizeSD) * cellWidth
+  surv_a.response * rep.response * fec.response * 
+    sexratio * dnorm(x, recsizeMean, recsizeSD) * cellWidth
 
 }
 
-recMat <- ipmKernelEvaluation(ipmOut, testData, testData$mass, recKern, recsizeMean = recsizeMean, recsizeSD = recsizeSD, cellWidth = cellWidth)
+recMat <- ipmKernelEvaluation(ipmOut, testData, testData$mass, 
+                              recKern, recsizeMean = recsizeMean, 
+                              recsizeSD = recsizeSD, cellWidth = cellWidth)
 
 # Plot the expected values of the recruitment kernel matrix
-image(testData$mass, testData$mass, t(recMat$expected), xlab = "mass(t)", ylab = "mass(t + 1)")
+image(testData$mass, testData$mass, t(recMat$expected), 
+      xlab = "mass(t)", ylab = "mass(t + 1)")
 
 ```
 
@@ -302,43 +354,59 @@ stgMatrix <- matrix(c(0, 1,
                       1, 1),
                       nrow = 2, ncol = 2, byrow = TRUE)
 
-ipmKernels <- list(growthSurvMat_f, growthSurvMat_a, recMat)
+ipmKernels <- list(growthSurvMat_f, growthSurvMat_a,recMat)
 states <- c('Fledgling', 'Adult')
-kernelFrom <- c('Fledgling', 'Adult', 'Adult')
-kernelTo <- c('Adult', 'Adult', 'Fledgling')
+kernelFrom <- c('Fledgling','Adult', 'Adult')
+kernelTo <- c('Adult','Adult', 'Fledgling')
 
-FullOut <- megaMatrixAssembly(stgMatrix, ipmKernels, states, kernelFrom, kernelTo)
 
+FullOut <- megaMatrixAssembly(stgMatrix, ipmKernels, 
+                              states, kernelFrom, kernelTo)
+```
+
+And now we finally analyse the full kernel using the ipmKernelAnalysis() function and make some plots of the asymptotic growth rate and age class specific stable mass distributions
+
+```{r FullKernAnal}
 # Analyse the full kernel (asymptotic growth rate and mass distribution)
 fullMatAnalysis <- ipmKernelAnalysis(FullOut)
 
+# Plot the asymptotic growth rate
 ggplot(data = data.frame(growthRate = fullMatAnalysis$assymPopGrowth)) + 
   geom_histogram(aes(x = growthRate), fill = "#69b3a2", color = "#e9ecef") +
-  geom_vline(xintercept = fullMatAnalysis$assymPopGrowthSummary[4], linetype = "dashed") + 
-  geom_vline(xintercept = fullMatAnalysis$assymPopGrowthSummary[5], linetype = "dashed") +
+  geom_vline(xintercept = fullMatAnalysis$assymPopGrowthSummary[4], 
+             linetype = "dashed") + 
+  geom_vline(xintercept = fullMatAnalysis$assymPopGrowthSummary[5], 
+             linetype = "dashed") +
   geom_vline(xintercept = fullMatAnalysis$assymPopGrowthSummary[1]) +
   theme_classic() + ylab("Count") + xlab("Asymptotic Growth Rate")
 
-ggplot(data = cbind(data.frame(size = testData$mass), fullMatAnalysis$stableDistSummary[1:100,])) +
-  geom_ribbon(aes(x = size, ymin = lower95cred, ymax = upper95cred), fill = "#69b3a2", color = "#e9ecef") +
+# Plot the stable mass distribution of fledglings 
+p1=ggplot(data = cbind(data.frame(size = testData$mass), 
+                       fullMatAnalysis$stableDistSummary[1:100,])) +
+  geom_ribbon(aes(x = size, ymin = lower95cred, ymax = upper95cred), 
+              fill = "cornflowerblue", color = "#e9ecef") +
   geom_line(aes(x = size, y = mean)) +
   theme_classic() + ylab("") + xlab("Mass") + ggtitle("Fledglings")
 
-ggplot(data = cbind(data.frame(size = testData$mass), fullMatAnalysis$stableDistSummary[101:200,])) +
-  geom_ribbon(aes(x = size, ymin = lower95cred, ymax = upper95cred), fill = "#69b3a2", color = "#e9ecef") +
+# Plot the stable mass distribution of adults 
+p2=ggplot(data = cbind(data.frame(size = testData$mass), 
+                       fullMatAnalysis$stableDistSummary[101:200,])) +
+  geom_ribbon(aes(x = size, ymin = lower95cred, ymax = upper95cred), 
+              fill = "#69b3a2", color = "#e9ecef") +
   geom_line(aes(x = size, y = mean)) +
   theme_classic() + ylab("") + xlab("Mass") + ggtitle("Adults")
+
+gridExtra::grid.arrange(p1,p2,nrow=1)
 
 ```
 
 
 ``` {r all kernel images}
 # Plot expected values of seperate kernels
-image(testData$mass, testData$mass, t(growthSurvMat_f$expected), xlab = "mass(t)", ylab = "mass(t + 1)")
-image(testData$mass, testData$mass, t(growthSurvMat_a$expected), xlab = "mass(t)", ylab = "mass(t + 1)")
-image(testData$mass, testData$mass, t(recMat$expected), xlab = "mass(t)", ylab = "mass(t + 1)")
-
-# Plot the expected values of the full kernel matrix
-image(t(FullOut$expected),horizontal=F)
-fields::image.plot(t(FullOut$expected),horizontal = FALSE)
+image(testData$mass, testData$mass, t(growthSurvMat_f$expected), 
+      xlab = "mass(t)", ylab = "mass(t + 1)")
+image(testData$mass, testData$mass, t(growthSurvMat_a$expected), 
+      xlab = "mass(t)", ylab = "mass(t + 1)")
+image(testData$mass, testData$mass, t(recMat$expected), 
+      xlab = "mass(t)", ylab = "mass(t + 1)")
 ```
