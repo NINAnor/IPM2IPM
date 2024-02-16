@@ -1,6 +1,28 @@
 # IPM2IPM
 Repository for script sharing and ideas for fusing integral projection models into integrated population model (SATS)
 
-Project summary:
+## About
 
-To be continued
+This site provides generic modelling tools for combining integral projection models (IPM1s) and integrated population models (IPM2s), developed in a [Bayesian framework]( https://en.wikipedia.org/wiki/Bayesian_inference). The aim is to provide general code that will run across multiple settings balancing user friendliness and technical/statistical complexity in order to tackle the various challenges in modeling population dynamics of different species in an increasingly complex world, without requiring the user to have very detailed knowledge of the software in use. The open-source statistical tool provides a combination of model opportunities (e.g. different statistical distributions for life history processes) and user friendliness (facilitates for “plug and play” features), making it relevant for answering a range of research questions even with limited in depth statistical knowledge.
+
+### Background
+
+This projects has a goal of developing a unified model framework for understanding the dynamics of populations, communities and ecosystems, providing tools to generate knowledge needed by the scientific community and managers to meet the challenges imposed by climate change. The project paves the way for a clearer understanding of possible climate-change effects on species and ecosystems, allowing more precise prediction of specific responses. The implementation of the model framework into management tools facilitates effective revision of current regulations, where the effect of specific mitigation efforts (e.g. change in land-use) can be simulated to inform long-term effects on ecosystem dynamics.  
+
+We start with single-species integral projection models exploring the effect of focal traits on population dynamics, before we extend to single-species models with intraspecific interactions and to community models with intra- and interspecific interactions. In the community models we will extend the models to consider dynamics of interacting species for different community structures, ranging from simple two-species systems, to more complex food webs.
+
+Combining the integral projection model and the integrated population model in representing how animal population dynamics emerge from interactions between individual mechanisms in spatially explicit landscapes have a large potential to improve the predictive power of population models. In the final step we will integrate the wto IPMs and develop an approach that is both mechanistic (captures the mechanisms driving population dynamics in spatially explicit landscapes) and general (can be applied to various species and environmental scenarios).
+
+### Model framework IPM1
+
+In general, an IPM is based on the vital rates survival, growth and reproduction, depending on focal traits (e.g. size) and external drivers (e.g. temperature). This information is then combined within the IPM, to make projections about population development over time. Here, we provide a flexible yet simple and intuitive model framework based on Bayesian techniques using [NIMBLE](https://www.tandfonline.com/doi/full/10.1080/10618600.2016.1172487). The user can fit as many vital regressions as needed, and they can be adjusted with various random terms and error distribution families to fit their particular study system. We provide a brief overview of the set up and functions here, and more details on coding and specific adjustments can be found in the different examples provided [here](https://github.com/NINAnor/IPM2IPM).
+
+After fitting the vital rate models, these models are combined together with the input data from your specific study system used for fitting the models, and are all fitted simultaneously using a single function. [Markov Chain Monte Carlo (MCMC)](https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo) is utilized for model fitting, and the parameters for the MCMC sampling can also be specified in the function. The final product of this function is an object containing a list with all the vital rate regressions, where each element contains a range of output for exploration, including statistics on model fit and convergence diagnostics, and the posterior distributions of all regression coefficients.
+
+The final step is to combine the predictions of the vital rate functions into kernels for life history characteristics that we are interested in. The kernel describes how the trait distribution of the individuals in a population change over time. The input data depends on the characters and covariates included in the vital rate models (e.g. size, temperature etc.). The function for calculating the kernels produces a full posterior distribution of kernel matrices.  Finally, the full kernel can be evaluated, and elements such as asymptotic growth rate and stable size distributions etc. can be calculated.
+
+
+### Integrating the IPM2 into the IPM1
+
+In the next stage of the model framework, the two modelling approaches IPM1 and IPM2 are integrated, to form a holistic model framework for population modelling using Bayesian techniques. The posterior distributions from the vital rate regressions in the IPM1 are used as empirical priors in the IPM2, and combined with the observation data of the given study system. As the full posterior distribution of projection matrices themselves are too big, we subsample the distribution of vital rate parameters and draw from them at random (particles). In the process the empirical prior gets reweighted *by the distribution of***, thus some of the posterior is sampled more often than other parts. This results in a new subset of vital rates used to construct the new projection matrix. 
+*more on calculations of population size and distribution etc, and feedback again to the IPM1?*
